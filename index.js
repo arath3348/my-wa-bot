@@ -11,43 +11,40 @@ const client = new Client({
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--no-zygote'
+            '--disable-dev-shm-usage'
         ],
     }
 });
 
-client.on('qr', (qr) => {
-    console.log('QR Received. Wait for Pairing Code...');
-});
-
 client.on('ready', () => {
-    console.log('✅ බොට් වැඩ මචං!');
+    console.log('✅ බොට් වැඩ මචං! දැන් මැසේජ් එකක් දාලා බලන්න.');
 });
 
-client.on('message', async (msg) => {
-    if (msg.fromMe) return;
+client.on('message', async (message) => {
+    if (message.fromMe) return;
     try {
-        const result = await model.generateContent(msg.body);
+        const result = await model.generateContent(message.body);
         const response = await result.response;
-        await msg.reply(response.text());
-    } catch (e) {
-        console.error('AI Error:', e);
+        await message.reply(response.text());
+    } catch (error) {
+        console.error('Gemini Error:', error);
     }
 });
 
 client.initialize();
 
 // Pairing Code Request
-const myNumber = '94751577174';
-setTimeout(async () => {
+const myNumber = '94751577174'; 
+
+client.on('qr', async () => {
+    console.log('🚀 Requesting Pairing Code...');
     try {
-        console.log('🚀 Requesting Pairing Code...');
+        // අලුත් ලයිබ්‍රරි එකේ මේක සාර්ථකව වැඩ කරනවා
         const code = await client.requestPairingCode(myNumber);
         console.log('\n====================================');
         console.log('👉 YOUR PAIRING CODE IS:', code);
         console.log('====================================\n');
     } catch (err) {
-        console.log('Error:', err.message);
+        console.log('Pairing Code එක ගන්න බැරි වුණා. ආයෙත් Deploy කරන්න.');
     }
-}, 20000);
+});
