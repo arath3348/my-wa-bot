@@ -2,7 +2,7 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 // 1. Gemini AI Setup
-// Railway එකේ Variables වල GEMINI_API_KEY කියලා Key එකක් හදලා ඇති නේද?
+// Railway Variables වල GEMINI_API_KEY එක දාලා තියෙන්න ඕනේ
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
@@ -11,7 +11,7 @@ const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
         handleSIGINT: false,
-        executablePath: '/usr/bin/google-chrome-stable', // Linux/Railway පරිසරයට ගැලපෙන ලෙස
+        // මෙතන executablePath එක අයින් කළා Browser error එක එන නිසා
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -23,9 +23,9 @@ const client = new Client({
     }
 });
 
-// 3. Status Logs
+// 3. Pairing Code Logic
 client.on('qr', (qr) => {
-    console.log('QR එක ආවා, හැබැයි අපි Pairing Code එකයි පාවිච්චි කරන්නේ...');
+    console.log('QR Received, but we are using Pairing Code...');
 });
 
 client.on('ready', () => {
@@ -34,28 +34,27 @@ client.on('ready', () => {
     console.log('-----------------------------------');
 });
 
-// 4. Message & AI Logic
+// 4. Message & AI Handling
 client.on('message', async (message) => {
     if (message.fromMe) return;
 
     try {
         console.log(`මැසේජ් එකක් ආවා: ${message.body}`);
         
-        // Gemini හරහා පිළිතුරක් ගැනීම
         const result = await model.generateContent(message.body);
         const response = await result.response;
         const text = response.text();
 
         await message.reply(text);
     } catch (error) {
-        console.error('Gemini Error:', error);
+        console.error('Gemini AI Error:', error);
     }
 });
 
-// 5. Client Initialize
+// 5. Initialize Client
 client.initialize();
 
-// 6. Pairing Code එක මෙතනින් ලැබෙයි
+// 6. Pairing Code Generation
 const myNumber = '94751577174'; 
 
 setTimeout(async () => {
@@ -65,7 +64,8 @@ setTimeout(async () => {
         console.log('\n====================================');
         console.log('👉 YOUR PAIRING CODE IS:', code);
         console.log('====================================\n');
+        console.log('Go to WhatsApp > Linked Devices > Link with phone number instead');
     } catch (err) {
-        console.error('Pairing Code Error:', err);
+        console.error('Failed to get pairing code:', err);
     }
-}, 10000); // තත්පර 10ක් පරක්කු කරනවා ඔක්කොම Load වෙනකම්
+}, 15000); // බ්‍රවුසරය ලෝඩ් වෙන්න තත්පර 15ක් ඉඩ දෙනවා
