@@ -8,23 +8,18 @@ const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
         handleSIGINT: false,
-        headless: true, // Railway වලදී මේක true තියෙන්න ඕනේ
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
             '--single-process',
-            '--no-zygote',
+            '--no-zygote'
         ],
     }
 });
 
-client.on('qr', (qr) => {
-    // QR එක පේන්න ඕනේ නැහැ, අපි පාවිච්චි කරන්නේ Pairing Code එක
-});
-
 client.on('ready', () => {
-    console.log('✅ බොට් වැඩ මචං! දැන් මැසේජ් එකක් දාලා බලන්න.');
+    console.log('✅ බොට් සාර්ථකව සම්බන්ධ වුණා!');
 });
 
 client.on('message', async (message) => {
@@ -42,24 +37,19 @@ client.initialize();
 
 const myNumber = '94751577174'; 
 
-// මේක තමයි මැජික් එක - තත්පර 40ක් ඉන්නවා ඔක්කොම Load වෙන්න
-setTimeout(async () => {
-    try {
-        console.log('🚀 Pairing Code එක Request කරනවා... පොඩ්ඩක් ඉන්න...');
-        
-        // Error එක එන එක නවත්තන්න කෙලින්ම page එකෙන් ඉල්ලමු
-        const code = await client.requestPairingCode(myNumber);
-        
-        console.log('\n====================================');
-        console.log('👉 YOUR PAIRING CODE IS:', code);
-        console.log('====================================\n');
-        console.log('දැන් Phone එකේ Linked Devices ගිහින් මේක ගහන්න!');
-    } catch (err) {
-        console.log('❌ Error එකක් ආවා, මම ආයෙත් Try කරනවා...');
-        // තව පාරක් Try කරමු
-        setTimeout(async () => {
+// Pairing code එක ගන්න කලින් WhatsApp Web එක හරියට load වෙනකම් ඉන්න ඕනේ
+client.on('qr', async (qr) => {
+    console.log('QR එක ලැබුණා, දැන් Pairing Code එක Request කරනවා...');
+    
+    // QR එක ඇවිත් තත්පර කිහිපයකින් Code එක ඉල්ලමු
+    setTimeout(async () => {
+        try {
             const code = await client.requestPairingCode(myNumber);
+            console.log('\n====================================');
             console.log('👉 YOUR PAIRING CODE IS:', code);
-        }, 15000);
-    }
-}, 40000); // කාලය වැඩි කළා (තත්පර 40ක්)
+            console.log('====================================\n');
+        } catch (err) {
+            console.log('Pairing Code Request Error. Retrying...');
+        }
+    }, 5000);
+});
