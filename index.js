@@ -1,63 +1,73 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+require('dotenv').config();
 
-// 1. මෙතනට ඔයාගේ Gemini API Key එක අනිවාර්යයෙන්ම දාන්න
-const genAI = new GoogleGenerativeAI("AIzaSyAGJVzVTcFOmr_U00xMl9RrKTyMvo98Zo4");
+// 1. Gemini AI Setup
+// Railway Variables වල GEMINI_API_KEY එක දාන්න ඕනේ
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
-const model = genAI.getGenerativeModel({ 
-    model: "gemini-1.5-flash",
-    systemInstruction: "ඔයාගේ නම සරත් (නැත්නම් ඉසුරු). ඔයා අවුරුදු 19ක කොල්ලෙක්. ඔයා Engineering Technology (ET) stream එකෙන් A/L කරන ශිෂ්‍යයෙක්. ඔයා ගොඩක් සුහද මනුස්සයෙක් වගේ සිංහලෙන් චැට් කරන්න ඕනේ. හෙළකුරු හෝ ඉංග්‍රීසි අකුරෙන් සිංහල (Singlish) පාවිච්චි කළත් කමක් නැහැ. කෙටි වාක්‍ය පාවිච්චි කරන්න. යාළුවොත් එක්ක කතා කරනවා වගේ 'මචං', 'එළ', 'මොකද වෙන්නේ' වගේ වචන පාවිච්චි කරන්න. කවුරුහරි තමන්ව හඳුන්වා දුන්නොත් ඒක මතක තබාගෙන පස්සේ කතා කරද්දී ඒ නම පාවිච්චි කරන්න. ගොඩක් සතුටුයි නම් [STICKER] කියලා මැසේජ් එක අගට දාන්න."
-});
-
+// 2. WhatsApp Client Setup
 const client = new Client({
     authStrategy: new LocalAuth(),
-    puppeteer: { 
-        headless: true,
+    puppeteer: {
+        handleSIGINT: false,
         args: [
-            '--no-sandbox', 
+            '--no-sandbox',
             '--disable-setuid-sandbox',
-            '--disable-extensions'
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-gpu'
         ],
-    },
-    // "Could not link device" error එක නැති කිරීමට මෙය උපකාරී වේ
-    webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
     }
 });
 
-// QR Code එක පෙන්වීම
-client.on('qr', qr => {
-    qrcode.generate(qr, {small: true});
-    console.log('WhatsApp එකෙන් Scan කරන්න:');
+// 3. Pairing Code Request
+client.on('qr', (qr) => {
+    console.log('QR Received, but we are using Pairing Code...');
 });
 
-// බොට් සූදානම් වූ පසු
 client.on('ready', () => {
-    console.log('බොට් දැන් වැඩ! මැසේජ් එකක් දාලා බලන්න.');
+    console.log('✅ WhatsApp Bot is Ready and Connected!');
 });
 
-// මැසේජ් එකක් ලැබුණු විට ක්‍රියාත්මක වන කොටස
-client.on('message', async msg => {
+// 4. Message Handling (Gemini AI)
+client.on('message', async (message) => {
+    if (message.fromMe) return; // තමන්ගේම මැසේජ් වලට රිප්ලයි කරන්නේ නැහැ
+
     try {
-        // Gemini AI එකෙන් පිළිතුර ලබා ගැනීම
-        const result = await model.generateContent(`පරිශීලකයා: ${msg.body}`);
+        console.log(`Message from ${message.from}: ${message.body}`);
+        
+        // Gemini AI එකෙන් පිළිතුරක් ඉල්ලීම
+        const result = await model.generateContent(message.body);
         const response = await result.response;
-        let replyText = response.text();
+        const text = response.text();
 
-        // Sticker එකක් යැවීමට අවශ්‍ය දැයි බැලීම
-        if (replyText.includes("[STICKER]")) {
-            replyText = replyText.replace("[STICKER]", "");
-            await msg.reply(replyText);
-            // සැබෑ ස්ටිකර් එකක් යවන විදිහ අපි පස්සේ හදමු
-        } else {
-            await msg.reply(replyText);
-        }
-
+        // පිළිතුර WhatsApp හරහා යැවීම
+        await message.reply(text);
     } catch (error) {
-        console.error("වැරැද්දක් වුණා:", error);
+        console.error('Error with Gemini AI:', error);
+        // await message.reply('සමාවෙන්න, මට මේ වෙලාවේ පිළිතුරක් දෙන්න බැහැ.');
     }
 });
 
+// 5. Initialize & Pairing Code Generation
 client.initialize();
+
+// මෙතන 947XXXXXXXXX වෙනුවට ඔයාගේ අංකය දාන්න
+const myNumber = '94751577174'; 
+
+setTimeout(async () => {
+    try {
+        const code = await client.requestPairingCode(myNumber);
+        console.log('-----------------------------------');
+        console.log('🚀 YOUR PAIRING CODE IS:', code);
+        console.log('-----------------------------------');
+        console.log('Go to WhatsApp > Linked Devices > Link with phone number instead');
+    } catch (err) {
+        console.error('Failed to get pairing code:', err);
+    }
+}, 10000); // තත්පර 10ක් ඉන්නවා බ්‍රවුසරය ලෝඩ් වෙනකම්
