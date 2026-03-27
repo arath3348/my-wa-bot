@@ -1,9 +1,8 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-require('dotenv').config();
 
 // 1. Gemini AI Setup
-// Railway Variables වල GEMINI_API_KEY එක දාන්න ඕනේ
+// Railway එකේ Variables වල GEMINI_API_KEY කියලා Key එකක් හදලා ඇති නේද?
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
@@ -12,62 +11,61 @@ const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
         handleSIGINT: false,
+        executablePath: '/usr/bin/google-chrome-stable', // Linux/Railway පරිසරයට ගැලපෙන ලෙස
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
             '--single-process',
+            '--no-zygote',
             '--disable-gpu'
         ],
     }
 });
 
-// 3. Pairing Code Request
+// 3. Status Logs
 client.on('qr', (qr) => {
-    console.log('QR Received, but we are using Pairing Code...');
+    console.log('QR එක ආවා, හැබැයි අපි Pairing Code එකයි පාවිච්චි කරන්නේ...');
 });
 
 client.on('ready', () => {
-    console.log('✅ WhatsApp Bot is Ready and Connected!');
+    console.log('-----------------------------------');
+    console.log('✅ බොට් වැඩ මචං! දැන් මැසේජ් එකක් දාලා බලන්න.');
+    console.log('-----------------------------------');
 });
 
-// 4. Message Handling (Gemini AI)
+// 4. Message & AI Logic
 client.on('message', async (message) => {
-    if (message.fromMe) return; // තමන්ගේම මැසේජ් වලට රිප්ලයි කරන්නේ නැහැ
+    if (message.fromMe) return;
 
     try {
-        console.log(`Message from ${message.from}: ${message.body}`);
+        console.log(`මැසේජ් එකක් ආවා: ${message.body}`);
         
-        // Gemini AI එකෙන් පිළිතුරක් ඉල්ලීම
+        // Gemini හරහා පිළිතුරක් ගැනීම
         const result = await model.generateContent(message.body);
         const response = await result.response;
         const text = response.text();
 
-        // පිළිතුර WhatsApp හරහා යැවීම
         await message.reply(text);
     } catch (error) {
-        console.error('Error with Gemini AI:', error);
-        // await message.reply('සමාවෙන්න, මට මේ වෙලාවේ පිළිතුරක් දෙන්න බැහැ.');
+        console.error('Gemini Error:', error);
     }
 });
 
-// 5. Initialize & Pairing Code Generation
+// 5. Client Initialize
 client.initialize();
 
-// මෙතන 947XXXXXXXXX වෙනුවට ඔයාගේ අංකය දාන්න
+// 6. Pairing Code එක මෙතනින් ලැබෙයි
 const myNumber = '94751577174'; 
 
 setTimeout(async () => {
     try {
+        console.log('🚀 Pairing Code එක Request කරනවා...');
         const code = await client.requestPairingCode(myNumber);
-        console.log('-----------------------------------');
-        console.log('🚀 YOUR PAIRING CODE IS:', code);
-        console.log('-----------------------------------');
-        console.log('Go to WhatsApp > Linked Devices > Link with phone number instead');
+        console.log('\n====================================');
+        console.log('👉 YOUR PAIRING CODE IS:', code);
+        console.log('====================================\n');
     } catch (err) {
-        console.error('Failed to get pairing code:', err);
+        console.error('Pairing Code Error:', err);
     }
-}, 10000); // තත්පර 10ක් ඉන්නවා බ්‍රවුසරය ලෝඩ් වෙනකම්
+}, 10000); // තත්පර 10ක් පරක්කු කරනවා ඔක්කොම Load වෙනකම්
