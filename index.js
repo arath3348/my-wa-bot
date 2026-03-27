@@ -8,19 +8,19 @@ const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
         handleSIGINT: false,
+        headless: true, // Railway වලදී මේක true තියෙන්න ඕනේ
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
             '--single-process',
             '--no-zygote',
-            '--disable-gpu'
         ],
     }
 });
 
 client.on('qr', (qr) => {
-    console.log('QR Received, but we are using Pairing Code...');
+    // QR එක පේන්න ඕනේ නැහැ, අපි පාවිච්චි කරන්නේ Pairing Code එක
 });
 
 client.on('ready', () => {
@@ -42,27 +42,24 @@ client.initialize();
 
 const myNumber = '94751577174'; 
 
-// Pairing Code එක ගන්න අලුත් ක්‍රමය
-async function getPairingCode() {
+// මේක තමයි මැජික් එක - තත්පර 40ක් ඉන්නවා ඔක්කොම Load වෙන්න
+setTimeout(async () => {
     try {
-        console.log('🚀 Pairing Code එක Request කරනවා...');
+        console.log('🚀 Pairing Code එක Request කරනවා... පොඩ්ඩක් ඉන්න...');
         
-        // බ්‍රවුසරය සහ WhatsApp Web පිටුව ලෝඩ් වෙනකම් පොඩ්ඩක් ඉවසමු
-        if (!client.pupPage) {
-            console.log('Waiting for browser page...');
-            setTimeout(getPairingCode, 5000); // තත්පර 5කින් ආයේ බලමු
-            return;
-        }
-
+        // Error එක එන එක නවත්තන්න කෙලින්ම page එකෙන් ඉල්ලමු
         const code = await client.requestPairingCode(myNumber);
+        
         console.log('\n====================================');
         console.log('👉 YOUR PAIRING CODE IS:', code);
         console.log('====================================\n');
+        console.log('දැන් Phone එකේ Linked Devices ගිහින් මේක ගහන්න!');
     } catch (err) {
-        console.log('Retrying Pairing Code...');
-        setTimeout(getPairingCode, 10000); // Error එකක් ආවොත් තව තත්පර 10කින් ආයේ try කරමු
+        console.log('❌ Error එකක් ආවා, මම ආයෙත් Try කරනවා...');
+        // තව පාරක් Try කරමු
+        setTimeout(async () => {
+            const code = await client.requestPairingCode(myNumber);
+            console.log('👉 YOUR PAIRING CODE IS:', code);
+        }, 15000);
     }
-}
-
-// බොට් පටන් අරන් තත්පර 30කින් Code එක ඉල්ලමු
-setTimeout(getPairingCode, 30000);
+}, 40000); // කාලය වැඩි කළා (තත්පර 40ක්)
