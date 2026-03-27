@@ -1,11 +1,9 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-// 1. Gemini AI Setup
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
-// 2. WhatsApp Client Setup
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
@@ -13,42 +11,43 @@ const client = new Client({
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage'
+            '--disable-dev-shm-usage',
+            '--no-zygote'
         ],
     }
 });
 
-// 3. Pairing Code Logic
-client.on('qr', async (qr) => {
-    console.log('QR Received. Requesting Pairing Code...');
-    
-    // බ්‍රවුසරය ලෝඩ් වෙන්න පොඩ්ඩක් ඉන්න
-    setTimeout(async () => {
-        try {
-            const myNumber = '94751577174'; 
-            const code = await client.requestPairingCode(myNumber);
-            console.log('\n====================================');
-            console.log('👉 YOUR PAIRING CODE IS:', code);
-            console.log('====================================\n');
-        } catch (err) {
-            console.log('Error requesting pairing code:', err.message);
-        }
-    }, 10000);
+client.on('qr', (qr) => {
+    console.log('QR Received. Wait for Pairing Code...');
 });
 
 client.on('ready', () => {
-    console.log('✅ බොට් සාර්ථකව සම්බන්ධ වුණා!');
+    console.log('✅ බොට් වැඩ මචං!');
 });
 
-client.on('message', async (message) => {
-    if (message.fromMe) return;
+client.on('message', async (msg) => {
+    if (msg.fromMe) return;
     try {
-        const result = await model.generateContent(message.body);
+        const result = await model.generateContent(msg.body);
         const response = await result.response;
-        await message.reply(response.text());
-    } catch (error) {
-        console.error('Gemini AI Error:', error);
+        await msg.reply(response.text());
+    } catch (e) {
+        console.error('AI Error:', e);
     }
 });
 
 client.initialize();
+
+// Pairing Code Request
+const myNumber = '94751577174';
+setTimeout(async () => {
+    try {
+        console.log('🚀 Requesting Pairing Code...');
+        const code = await client.requestPairingCode(myNumber);
+        console.log('\n====================================');
+        console.log('👉 YOUR PAIRING CODE IS:', code);
+        console.log('====================================\n');
+    } catch (err) {
+        console.log('Error:', err.message);
+    }
+}, 20000);
