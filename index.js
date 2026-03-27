@@ -6,7 +6,7 @@ const {
   proto,
   getContentType,
 } = require('@whiskeysockets/baileys');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleGenerativeAI } = require('gemini-pro');
 const QRCode = require('qrcode');
 const qrcode = require('qrcode-terminal');
 const http = require('http');
