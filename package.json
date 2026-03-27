@@ -1,13 +1,13 @@
 {
   "name": "mybot",
   "version": "1.0.0",
-  "description": "WhatsApp Bot",
+  "description": "WhatsApp Bot with Gemini",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
-    "whatsapp-web.js": "1.26.0"
+    "whatsapp-web.js": "github:SuhailTechInfo/whatsapp-web.js"
   }
 }
