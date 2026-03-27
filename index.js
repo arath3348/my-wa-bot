@@ -42,26 +42,27 @@ client.initialize();
 
 const myNumber = '94751577174'; 
 
-// මේ කොටස තමයි අර Error එක fix කරන්නේ
-setTimeout(async () => {
+// Pairing Code එක ගන්න අලුත් ක්‍රමය
+async function getPairingCode() {
     try {
         console.log('🚀 Pairing Code එක Request කරනවා...');
         
-        // Window Error එක මඟහරවා ගන්නා ක්‍රමය
-        const code = await client.pupPage.evaluate(async (phoneNumber) => {
-            return await window.WWebJS.requestPairingCode(phoneNumber);
-        }, myNumber);
+        // බ්‍රවුසරය සහ WhatsApp Web පිටුව ලෝඩ් වෙනකම් පොඩ්ඩක් ඉවසමු
+        if (!client.pupPage) {
+            console.log('Waiting for browser page...');
+            setTimeout(getPairingCode, 5000); // තත්පර 5කින් ආයේ බලමු
+            return;
+        }
 
+        const code = await client.requestPairingCode(myNumber);
         console.log('\n====================================');
         console.log('👉 YOUR PAIRING CODE IS:', code);
         console.log('====================================\n');
     } catch (err) {
-        // සමහර වෙලාවට පළවෙනි පාර වැරදුනොත් සාමාන්‍ය ක්‍රමය ට්‍රයි කරන්න
-        try {
-            const code = await client.requestPairingCode(myNumber);
-            console.log('👉 YOUR PAIRING CODE IS:', code);
-        } catch (finalErr) {
-            console.error('Pairing Code එක ගන්න බැරි වුණා. ආයෙත් Deploy කරන්න.');
-        }
+        console.log('Retrying Pairing Code...');
+        setTimeout(getPairingCode, 10000); // Error එකක් ආවොත් තව තත්පර 10කින් ආයේ try කරමු
     }
-}, 20000); // තත්පර 20ක් ඉන්න (ලෝඩ් වෙන්න වෙලාව දෙන්න)
+}
+
+// බොට් පටන් අරන් තත්පර 30කින් Code එක ඉල්ලමු
+setTimeout(getPairingCode, 30000);
