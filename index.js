@@ -3,10 +3,9 @@ const {
   useMultiFileAuthState,
   DisconnectReason,
   makeCacheableSignalKeyStore,
-  proto,
   getContentType,
 } = require('@whiskeysockets/baileys');
-const { GoogleGenerativeAI } = require('gemini-pro');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const QRCode = require('qrcode');
 const qrcode = require('qrcode-terminal');
 const http = require('http');
@@ -76,10 +75,10 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => console.log(`✅ HTTP Server on port ${PORT}`));
 
 // ─── CONTACT PERSONAS ─────────────────────────────────────
-// ✅ ඔයාගේ contacts add කරන්න මෙහෙම:
+// ✅ ඔයාගේ contacts add කරන්න:
 // contactPersonas['94771234567@s.whatsapp.net'] = {
 //   name: 'Kamal',
-//   style: 'My best friend since school. Talks in casual Sinhala-English mix. Calls me "machan".'
+//   style: 'My best friend since school. Talks casual Sinhala-English. Calls me machan.'
 // };
 const contactPersonas = {};
 
@@ -89,12 +88,14 @@ const MY_STYLE = `
 You must impersonate a real Sri Lankan person replying on WhatsApp.
 STRICT rules:
 1. MAX 1-2 short lines. Never long paragraphs.
-2. Use Sinhala + English mix (Singlish): "hm", "ok", "aney", "da", "ne", "machan", "thamai", "ow", "niyamai", "api", "kohomada"
+2. Use Sinhala + English mix (Singlish): "hm", "ok", "aney", "da", "ne", "machan", "thamai", "ow", "niyamai", "api", "kohomada", "hadanne", "yamu", "bala"
 3. Use emojis rarely: 😂 😅 ❤️ 👍 🙈
 4. Sound HUMAN and CASUAL. Never formal. Never AI-like.
 5. Match the conversation topic naturally.
 6. If asked something you don't know, say "danne na" or "hmm idea nane"
 7. Sometimes reply with just "hm" or "ow ok" for simple messages.
+8. If someone asks if you are AI or bot - DENY IT. Say "nah meka ai ekk neme" or "hm man thami" 
+9. Never use perfect grammar - make small typos sometimes like a real person
 
 Good examples:
 "hm ok machan 👍"
@@ -104,6 +105,7 @@ Good examples:
 "hmm niyamai da?"
 "ahh ok thamai ne"
 "api ynna one koheda?"
+"nah meka ai ekk nemei 😂 man thami"
 `;
 
 // ─── MEMORY ───────────────────────────────────────────────
@@ -112,7 +114,7 @@ const memory = {};
 async function getReply(jid, incomingText, senderName) {
   const persona = contactPersonas[jid] || {
     name: senderName,
-    style: 'A friend. Reply naturally.',
+    style: 'A friend. Reply naturally like a Sri Lankan person.',
   };
 
   if (!memory[jid]) memory[jid] = [];
@@ -131,10 +133,11 @@ Recent conversation:
 ${chatHistory}
 
 Reply to the latest message from ${persona.name}.
-Output ONLY your reply text. No quotes. No explanations. Just the reply.`;
+Output ONLY your reply text. No quotes. No explanations. Just the message.`;
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    // ✅ gemini-2.0-flash - latest & free
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
     const result = await model.generateContent(prompt);
     const reply = result.response.text().trim().replace(/^["']|["']$/g, '').split('\n')[0];
     memory[jid].push(`Me: ${reply}`);
@@ -190,7 +193,7 @@ async function startBot() {
       console.log('\n📱 QR Ready! Open: /qr\n');
       qrcode.generate(qr, { small: true });
 
-      // Request pairing code (phone number based) as alternative
+      // Request pairing code as alternative
       if (!pairingRequested && PHONE_NUMBER && PHONE_NUMBER.length > 8) {
         pairingRequested = true;
         setTimeout(async () => {
@@ -237,14 +240,13 @@ async function startBot() {
     }
   });
 
-  // ─── MESSAGE HANDLER ──────────────────────────────────────
+  // ─── MESSAGE HANDLER ────────────────────────────────────
   sock.ev.on('messages.upsert', async (upsert) => {
     try {
       const { messages, type } = upsert;
       if (type !== 'notify') return;
 
       for (const msg of messages) {
-        // Skip own messages and broadcasts
         if (msg.key.fromMe) continue;
         if (msg.key.remoteJid === 'status@broadcast') continue;
         if (!msg.message) continue;
@@ -268,7 +270,7 @@ async function startBot() {
 
         if (!text || text.trim() === '') continue;
 
-        console.log(`📩 [${senderName}] (${jid}): ${text}`);
+        console.log(`📩 [${senderName}]: ${text}`);
 
         // 10% sticker chance
         if (Math.random() < 0.1) {
@@ -276,7 +278,7 @@ async function startBot() {
           if (sent) { console.log('🎭 Sticker sent'); continue; }
         }
 
-        // Generate reply
+        // Generate AI reply
         const reply = await getReply(jid, text, senderName);
         console.log(`🤖 Sending: ${reply}`);
 
@@ -284,13 +286,12 @@ async function startBot() {
         const delay = 1500 + Math.random() * 2500;
         await new Promise(r => setTimeout(r, delay));
 
-        // ✅ Send message - with error handling
+        // Send with retry
         try {
           await sock.sendMessage(jid, { text: reply }, { quoted: msg });
           console.log(`✅ Sent to ${senderName}`);
         } catch (sendError) {
           console.error(`❌ Send failed: ${sendError.message}`);
-          // Retry without quote
           try {
             await sock.sendMessage(jid, { text: reply });
             console.log(`✅ Sent (no quote) to ${senderName}`);
