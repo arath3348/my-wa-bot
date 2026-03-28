@@ -17,6 +17,14 @@ const path = require('path');
 const PHONE_NUMBER = process.env.PHONE_NUMBER || '';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const PORT = process.env.PORT || 8080;
+
+// ✅ Try models in order until one works
+const GEMINI_MODELS = [
+  'gemini-1.5-flash',
+  'gemini-1.5-flash-8b',
+  'gemini-2.0-flash-lite',
+  'gemini-2.0-flash',
+];
 // ──────────────────────────────────────────────────────────
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
@@ -36,34 +44,32 @@ const server = http.createServer(async (req, res) => {
     <meta http-equiv="refresh" content="5"><title>WA Bot</title>
     <style>
       body{background:#111;color:#0f0;font-family:monospace;text-align:center;padding:30px}
-      a{color:#0f0}
       img{border:4px solid #0f0;border-radius:8px;margin:10px}
       .code{font-size:36px;letter-spacing:8px;color:#ff0;background:#222;padding:20px;border-radius:8px;display:inline-block;margin:15px}
       .status{color:#888;font-size:13px}
       .btn{background:#0f0;color:#000;padding:12px 25px;text-decoration:none;border-radius:6px;font-size:16px;display:inline-block;margin:10px}
-    </style></head>
-    <body>${body}</body></html>`);
+    </style></head><body>${body}</body></html>`);
   };
 
   if (req.url === '/qr') {
     if (pairingCode) {
-      html(`<h2>📱 Pairing Code Enter කරන්න</h2>
+      html(`<h2>📱 Pairing Code</h2>
         <p>WhatsApp → ⋮ → Linked Devices → Link a Device → <b>Link with phone number instead</b></p>
         <p>Number: <b>+${PHONE_NUMBER}</b></p>
         <div class="code">${pairingCode}</div>
-        <p class="status">Status: ${botStatus} | Auto refresh 5s</p>`);
+        <p class="status">Status: ${botStatus}</p>`);
     } else if (currentQR) {
       try {
         const img = await QRCode.toDataURL(currentQR, { width: 280 });
         html(`<h2>📱 QR Scan කරන්න</h2>
           <p>WhatsApp → ⋮ → Linked Devices → Link a Device</p>
-          <img src="${img}"/><br>
-          <p class="status">Status: ${botStatus} | Auto refresh 5s</p>`);
+          <img src="${img}"/>
+          <p class="status">Status: ${botStatus}</p>`);
       } catch (e) {
-        html(`<h2>QR Error: ${e.message}</h2>`);
+        html(`<h2>QR Error</h2>`);
       }
     } else {
-      html(`<h2>⏳ ${botStatus}</h2><p>Wait කරන්න, QR generate වෙනවා...</p>`);
+      html(`<h2>⏳ ${botStatus}</h2><p>Wait කරන්න...</p>`);
     }
   } else {
     html(`<h1>🤖 WhatsApp AI Bot</h1>
@@ -75,77 +81,103 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => console.log(`✅ HTTP Server on port ${PORT}`));
 
 // ─── CONTACT PERSONAS ─────────────────────────────────────
-// ✅ ඔයාගේ contacts add කරන්න:
+const contactPersonas = {};
+// ✅ ඔයාගේ contacts:
 // contactPersonas['94771234567@s.whatsapp.net'] = {
 //   name: 'Kamal',
-//   style: 'My best friend since school. Talks casual Sinhala-English. Calls me machan.'
+//   style: 'Best friend. Casual Sinhala-English. Uses machan.'
 // };
-const contactPersonas = {};
 
-// ─── MY CHAT STYLE ────────────────────────────────────────
-// ✅ ඔයාගේ style customize කරන්න:
+// ─── MY STYLE ─────────────────────────────────────────────
 const MY_STYLE = `
 You must impersonate a real Sri Lankan person replying on WhatsApp.
 STRICT rules:
-1. MAX 1-2 short lines. Never long paragraphs.
-2. Use Sinhala + English mix (Singlish): "hm", "ok", "aney", "da", "ne", "machan", "thamai", "ow", "niyamai", "api", "kohomada", "hadanne", "yamu", "bala"
-3. Use emojis rarely: 😂 😅 ❤️ 👍 🙈
-4. Sound HUMAN and CASUAL. Never formal. Never AI-like.
-5. Match the conversation topic naturally.
-6. If asked something you don't know, say "danne na" or "hmm idea nane"
-7. Sometimes reply with just "hm" or "ow ok" for simple messages.
-8. If someone asks if you are AI or bot - DENY IT. Say "nah meka ai ekk neme" or "hm man thami" 
-9. Never use perfect grammar - make small typos sometimes like a real person
-
+1. MAX 1-2 short lines only. Never long replies.
+2. Use Sinhala + English mix: "hm", "ok", "aney", "da", "ne", "machan", "thamai", "ow", "niyamai", "kohomada", "danne na"
+3. Emojis rarely: 😂 😅 ❤️ 👍 🙈
+4. Sound HUMAN. Never formal. Never AI-like.
+5. If asked if you are AI - say "nah man thami 😂" or "neme ai ekk"
+6. Small typos ok like real person.
 Good examples:
-"hm ok machan 👍"
-"aney danne na 😂"
-"ow ow therenawa"
-"sry late reply una"
-"hmm niyamai da?"
-"ahh ok thamai ne"
-"api ynna one koheda?"
-"nah meka ai ekk nemei 😂 man thami"
+"hm ok machan" / "aney danne na 😂" / "ow therenawa" / "sry late" / "hmm niyamai da"
 `;
 
 // ─── MEMORY ───────────────────────────────────────────────
 const memory = {};
 
+// ─── GEMINI WITH MULTI-MODEL FALLBACK + RETRY ─────────────
+async function callGemini(prompt) {
+  for (const modelName of GEMINI_MODELS) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent(prompt);
+      const text = result.response.text().trim().replace(/^["']|["']$/g, '').split('\n')[0];
+      console.log(`✅ Gemini [${modelName}] OK`);
+      return text;
+    } catch (e) {
+      if (e.message.includes('429') || e.message.includes('quota')) {
+        console.log(`⚠️ [${modelName}] quota exceeded, trying next...`);
+        // Wait before trying next model
+        await new Promise(r => setTimeout(r, 2000));
+        continue;
+      } else if (e.message.includes('404') || e.message.includes('not found')) {
+        console.log(`⚠️ [${modelName}] not found, trying next...`);
+        continue;
+      } else {
+        console.error(`❌ Gemini [${modelName}] error: ${e.message}`);
+        continue;
+      }
+    }
+  }
+  return null; // All models failed
+}
+
+// ─── SMART FALLBACK REPLIES ────────────────────────────────
+// Used when ALL Gemini models fail - sounds human
+const fallbackReplies = [
+  'hm', 'ok', 'ow', 'hmm', 'aney', 'ok da', 'hm ok',
+  'ow ok', 'sry late', 'hm thamai', 'ow therenawa',
+  'hmm danne na', 'ok machan', 'aney 😂'
+];
+
+function getSmartFallback(text) {
+  const t = text.toLowerCase();
+  if (t.includes('hello') || t.includes('hllo') || t.includes('haloo') || t.includes('hi ')) return 'haloo 👋';
+  if (t.includes('kohomada') || t.includes('how are')) return 'hm niyamai, oya?';
+  if (t.includes('ai') || t.includes('bot')) return 'nah man thami 😂';
+  if (t.includes('?')) return 'hmm danne na';
+  if (t.includes('ok') || t.includes('hm')) return 'ow ok';
+  return fallbackReplies[Math.floor(Math.random() * fallbackReplies.length)];
+}
+
 async function getReply(jid, incomingText, senderName) {
   const persona = contactPersonas[jid] || {
     name: senderName,
-    style: 'A friend. Reply naturally like a Sri Lankan person.',
+    style: 'A friend.',
   };
 
   if (!memory[jid]) memory[jid] = [];
   memory[jid].push(`${persona.name}: ${incomingText}`);
-  if (memory[jid].length > 14) memory[jid].shift();
-
-  const chatHistory = memory[jid].join('\n');
+  if (memory[jid].length > 10) memory[jid].shift();
 
   const prompt = `${MY_STYLE}
 
-You are replying as the phone owner.
-Contact name: ${persona.name}
-Contact style: ${persona.style}
+Contact: ${persona.name} (${persona.style})
+Chat history:
+${memory[jid].join('\n')}
 
-Recent conversation:
-${chatHistory}
+Reply as phone owner to latest message. Output ONLY the reply:`;
 
-Reply to the latest message from ${persona.name}.
-Output ONLY your reply text. No quotes. No explanations. Just the message.`;
+  let reply = await callGemini(prompt);
 
-  try {
-    // ✅ gemini-2.0-flash - latest & free
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-    const result = await model.generateContent(prompt);
-    const reply = result.response.text().trim().replace(/^["']|["']$/g, '').split('\n')[0];
-    memory[jid].push(`Me: ${reply}`);
-    return reply;
-  } catch (e) {
-    console.error('Gemini error:', e.message);
-    return 'hm';
+  if (!reply) {
+    // All Gemini models failed - use smart fallback
+    reply = getSmartFallback(incomingText);
+    console.log(`⚠️ Using smart fallback: ${reply}`);
   }
+
+  memory[jid].push(`Me: ${reply}`);
+  return reply;
 }
 
 // ─── STICKER ──────────────────────────────────────────────
@@ -159,13 +191,12 @@ async function sendSticker(jid, quotedMsg) {
   return true;
 }
 
-// ─── BOT MAIN ─────────────────────────────────────────────
+// ─── BOT ──────────────────────────────────────────────────
 let retries = 0;
 let pairingRequested = false;
 
 async function startBot() {
   pairingRequested = false;
-
   const { state, saveCreds } = await useMultiFileAuthState('./auth_info');
 
   sock = makeWASocket({
@@ -193,7 +224,6 @@ async function startBot() {
       console.log('\n📱 QR Ready! Open: /qr\n');
       qrcode.generate(qr, { small: true });
 
-      // Request pairing code as alternative
       if (!pairingRequested && PHONE_NUMBER && PHONE_NUMBER.length > 8) {
         pairingRequested = true;
         setTimeout(async () => {
@@ -219,8 +249,7 @@ async function startBot() {
       console.log(`❌ Disconnected - Code: ${code}`);
 
       if (code === DisconnectReason.loggedOut) {
-        botStatus = '🚫 Logged out! auth_info folder delete කරලා redeploy කරන්න.';
-        console.log('Logged out. Will not reconnect.');
+        botStatus = '🚫 Logged out! auth_info delete කරලා redeploy කරන්න.';
         return;
       }
 
@@ -240,7 +269,7 @@ async function startBot() {
     }
   });
 
-  // ─── MESSAGE HANDLER ────────────────────────────────────
+  // ─── MESSAGE HANDLER ──────────────────────────────────────
   sock.ev.on('messages.upsert', async (upsert) => {
     try {
       const { messages, type } = upsert;
@@ -254,54 +283,52 @@ async function startBot() {
         const jid = msg.key.remoteJid;
         const senderName = msg.pushName || msg.key.participant?.split('@')[0] || 'Friend';
 
-        // Extract text from all message types
         const msgType = getContentType(msg.message);
         let text = '';
 
         if (msgType === 'conversation') {
           text = msg.message.conversation;
         } else if (msgType === 'extendedTextMessage') {
-          text = msg.message.extendedTextMessage?.text;
+          text = msg.message.extendedTextMessage?.text || '';
         } else if (msgType === 'imageMessage') {
           text = msg.message.imageMessage?.caption || '';
         } else if (msgType === 'videoMessage') {
           text = msg.message.videoMessage?.caption || '';
         }
 
-        if (!text || text.trim() === '') continue;
+        if (!text.trim()) continue;
 
         console.log(`📩 [${senderName}]: ${text}`);
 
         // 10% sticker chance
         if (Math.random() < 0.1) {
           const sent = await sendSticker(jid, msg);
-          if (sent) { console.log('🎭 Sticker sent'); continue; }
+          if (sent) { console.log('🎭 Sticker'); continue; }
         }
 
-        // Generate AI reply
+        // Get AI reply
         const reply = await getReply(jid, text, senderName);
-        console.log(`🤖 Sending: ${reply}`);
+        console.log(`🤖 Reply: ${reply}`);
 
-        // Human-like typing delay (1.5s - 4s)
-        const delay = 1500 + Math.random() * 2500;
-        await new Promise(r => setTimeout(r, delay));
+        // Human typing delay 1.5s - 4s
+        await new Promise(r => setTimeout(r, 1500 + Math.random() * 2500));
 
         // Send with retry
         try {
           await sock.sendMessage(jid, { text: reply }, { quoted: msg });
           console.log(`✅ Sent to ${senderName}`);
-        } catch (sendError) {
-          console.error(`❌ Send failed: ${sendError.message}`);
+        } catch (e1) {
+          console.error(`Send failed: ${e1.message}`);
           try {
             await sock.sendMessage(jid, { text: reply });
-            console.log(`✅ Sent (no quote) to ${senderName}`);
-          } catch (retryError) {
-            console.error(`❌ Retry failed: ${retryError.message}`);
+            console.log(`✅ Sent (no quote)`);
+          } catch (e2) {
+            console.error(`Retry failed: ${e2.message}`);
           }
         }
       }
     } catch (err) {
-      console.error('Message handler error:', err.message);
+      console.error('Handler error:', err.message);
     }
   });
 }
