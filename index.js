@@ -18,12 +18,11 @@ const PHONE_NUMBER = process.env.PHONE_NUMBER || '';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const PORT = process.env.PORT || 8080;
 
-// ✅ Try models in order until one works
 const GEMINI_MODELS = [
+  'gemini-2.0-flash-exp',   // අලුත්ම - quota වැඩිම
+  'gemini-2.0-flash',
   'gemini-1.5-flash',
   'gemini-1.5-flash-8b',
-  'gemini-2.0-flash-lite',
-  'gemini-2.0-flash',
 ];
 // ──────────────────────────────────────────────────────────
 
@@ -82,7 +81,7 @@ server.listen(PORT, '0.0.0.0', () => console.log(`✅ HTTP Server on port ${PORT
 
 // ─── CONTACT PERSONAS ─────────────────────────────────────
 const contactPersonas = {};
-// ✅ ඔයාගේ contacts:
+// ✅ ඔයාගේ contacts add කරන්න:
 // contactPersonas['94771234567@s.whatsapp.net'] = {
 //   name: 'Kamal',
 //   style: 'Best friend. Casual Sinhala-English. Uses machan.'
@@ -105,7 +104,7 @@ Good examples:
 // ─── MEMORY ───────────────────────────────────────────────
 const memory = {};
 
-// ─── GEMINI WITH MULTI-MODEL FALLBACK + RETRY ─────────────
+// ─── GEMINI WITH FALLBACK ──────────────────────────────────
 async function callGemini(prompt) {
   for (const modelName of GEMINI_MODELS) {
     try {
@@ -117,37 +116,27 @@ async function callGemini(prompt) {
     } catch (e) {
       if (e.message.includes('429') || e.message.includes('quota')) {
         console.log(`⚠️ [${modelName}] quota exceeded, trying next...`);
-        // Wait before trying next model
-        await new Promise(r => setTimeout(r, 2000));
-        continue;
+        await new Promise(r => setTimeout(r, 1000));
       } else if (e.message.includes('404') || e.message.includes('not found')) {
         console.log(`⚠️ [${modelName}] not found, trying next...`);
-        continue;
       } else {
-        console.error(`❌ Gemini [${modelName}] error: ${e.message}`);
-        continue;
+        console.error(`❌ [${modelName}]: ${e.message}`);
       }
     }
   }
-  return null; // All models failed
+  return null;
 }
 
-// ─── SMART FALLBACK REPLIES ────────────────────────────────
-// Used when ALL Gemini models fail - sounds human
-const fallbackReplies = [
-  'hm', 'ok', 'ow', 'hmm', 'aney', 'ok da', 'hm ok',
-  'ow ok', 'sry late', 'hm thamai', 'ow therenawa',
-  'hmm danne na', 'ok machan', 'aney 😂'
-];
-
+// ─── SMART FALLBACK ───────────────────────────────────────
 function getSmartFallback(text) {
   const t = text.toLowerCase();
-  if (t.includes('hello') || t.includes('hllo') || t.includes('haloo') || t.includes('hi ')) return 'haloo 👋';
+  if (t.includes('hello') || t.includes('hllo') || t.includes('haloo') || t.includes('hi') || t.includes('hlo')) return 'haloo 👋';
   if (t.includes('kohomada') || t.includes('how are')) return 'hm niyamai, oya?';
   if (t.includes('ai') || t.includes('bot')) return 'nah man thami 😂';
   if (t.includes('?')) return 'hmm danne na';
   if (t.includes('ok') || t.includes('hm')) return 'ow ok';
-  return fallbackReplies[Math.floor(Math.random() * fallbackReplies.length)];
+  const fallbacks = ['hm', 'ok da', 'ow', 'hmm', 'aney', 'hm thamai', 'ow therenawa', 'sry late'];
+  return fallbacks[Math.floor(Math.random() * fallbacks.length)];
 }
 
 async function getReply(jid, incomingText, senderName) {
@@ -171,9 +160,8 @@ Reply as phone owner to latest message. Output ONLY the reply:`;
   let reply = await callGemini(prompt);
 
   if (!reply) {
-    // All Gemini models failed - use smart fallback
     reply = getSmartFallback(incomingText);
-    console.log(`⚠️ Using smart fallback: ${reply}`);
+    console.log(`⚠️ Smart fallback: ${reply}`);
   }
 
   memory[jid].push(`Me: ${reply}`);
@@ -181,13 +169,13 @@ Reply as phone owner to latest message. Output ONLY the reply:`;
 }
 
 // ─── STICKER ──────────────────────────────────────────────
-async function sendSticker(jid, quotedMsg) {
+async function sendSticker(jid) {
   const dir = './stickers';
   if (!fs.existsSync(dir)) return false;
   const files = fs.readdirSync(dir).filter(f => f.endsWith('.webp'));
   if (!files.length) return false;
   const buf = fs.readFileSync(path.join(dir, files[Math.floor(Math.random() * files.length)]));
-  await sock.sendMessage(jid, { sticker: buf }, { quoted: quotedMsg });
+  await sock.sendMessage(jid, { sticker: buf });
   return true;
 }
 
@@ -249,7 +237,7 @@ async function startBot() {
       console.log(`❌ Disconnected - Code: ${code}`);
 
       if (code === DisconnectReason.loggedOut) {
-        botStatus = '🚫 Logged out! auth_info delete කරලා redeploy කරන්න.';
+        botStatus = '🚫 Logged out! auth_info delete කරලා redeploy.';
         return;
       }
 
@@ -302,26 +290,27 @@ async function startBot() {
 
         // 10% sticker chance
         if (Math.random() < 0.1) {
-          const sent = await sendSticker(jid, msg);
+          const sent = await sendSticker(jid);
           if (sent) { console.log('🎭 Sticker'); continue; }
         }
 
-        // Get AI reply
+        // Get reply
         const reply = await getReply(jid, text, senderName);
         console.log(`🤖 Reply: ${reply}`);
 
-        // Human typing delay 1.5s - 4s
-        await new Promise(r => setTimeout(r, 1500 + Math.random() * 2500));
+        // Human typing delay
+        await new Promise(r => setTimeout(r, 1000 + Math.random() * 2000));
 
-        // Send with retry
+        // ✅ Send directly - no quoted msg (more reliable)
         try {
-          await sock.sendMessage(jid, { text: reply }, { quoted: msg });
+          await sock.sendMessage(jid, { text: reply });
           console.log(`✅ Sent to ${senderName}`);
         } catch (e1) {
           console.error(`Send failed: ${e1.message}`);
           try {
+            await new Promise(r => setTimeout(r, 2000));
             await sock.sendMessage(jid, { text: reply });
-            console.log(`✅ Sent (no quote)`);
+            console.log(`✅ Sent (retry) to ${senderName}`);
           } catch (e2) {
             console.error(`Retry failed: ${e2.message}`);
           }
